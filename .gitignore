@@ -1,1 +1,28 @@
+# Python virtual environment
+venv/
 .env
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Alembic cache
+alembic/__pycache__/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Logs
+*.log
+
+# Python build artifacts
+build/
+dist/
+*.egg-info/
+
+# Test cache
+.pytest_cache/
