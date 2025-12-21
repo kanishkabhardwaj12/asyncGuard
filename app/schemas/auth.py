@@ -7,4 +7,6 @@ class SignupResponse(BaseModel):
     email:EmailStr
     role:str
     org_id: int| None
-    
+class LoginRequest(BaseModel):
+    email:EmailStr
+    password:str
