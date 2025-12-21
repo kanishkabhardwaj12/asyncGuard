@@ -1,0 +1,14 @@
+from fastapi import APIRouter, Depends, Response, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.config.db import get_db
+from app.schemas.organization import OrgRequestModel , OrgResponseModel
+from app.services.org_service import OrgService
+from app.middleware.auth import get_current_user
+from app.models.user import User
+
+router = APIRouter(prefix="/organizations", tags=["Organization"])
+
+@router.post("/create",response_model=OrgResponseModel,status_code=status.HTTP_201_CREATED)
+async def create_org(data:OrgRequestModel, db:AsyncSession=Depends(get_db), user : User =Depends(get_current_user)):
+    return await OrgService.create_org(data,user,db)

@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import app.models
 from app.api import auth
+from app.api import organizations
 from app.config.settings import settings
 
 def create_app() -> FastAPI:
@@ -21,6 +22,7 @@ def create_app() -> FastAPI:
 
     #  Routers 
     app.include_router(auth.router)
+    app.include_router(organizations.router)
 
     # Health Check 
     @app.get("/health", tags=["Health"])
