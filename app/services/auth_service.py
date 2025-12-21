@@ -1,3 +1,5 @@
+# app/services/auth_service.py
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from fastapi import HTTPException, status, Response
@@ -6,7 +8,7 @@ from app.models.user import User, UserRole
 from app.schemas.auth import SignupRequest, SignupResponse, LoginRequest
 from app.helpers.jwt import create_access_token
 from app.helpers.hashing import verify_password, hash_password
-from app.config.settings import settings
+from app.helpers.cookies import set_auth_cookie, clear_auth_cookie
 
 
 class AuthService:
@@ -69,23 +71,11 @@ class AuthService:
             }
         )
 
-        response.set_cookie(
-            key="access_token",
-            value=token,
-            httponly=False,
-            secure=not settings.DEBUG,
-            samesite="lax",
-            max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        )
+        set_auth_cookie(response, token)
 
         return {"message": "Logged in successfully"}
 
     @staticmethod
     async def logout(response: Response) -> dict:
-        response.delete_cookie(
-            key="access_token",
-            httponly=False,
-            secure=not settings.DEBUG,
-            samesite="lax",
-        )
+        clear_auth_cookie(response)
         return {"message": "Logged out successfully"}
