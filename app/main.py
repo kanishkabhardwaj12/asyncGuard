@@ -1,1 +1,33 @@
-print("holla")
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+import app.models
+from app.api import auth
+from app.config.settings import settings
+
+def create_app() -> FastAPI:
+    app = FastAPI(
+        title="asyncGuard",
+        description="Async API Security & Compliance Platform",
+        version="0.1.0",
+    )
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    #  Routers 
+    app.include_router(auth.router)
+
+    # Health Check 
+    @app.get("/health", tags=["Health"])
+    async def health_check():
+        return {"status": "ok"}
+
+    return app
+
+
+app = create_app()

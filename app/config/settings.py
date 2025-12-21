@@ -1,4 +1,6 @@
 from pydantic_settings import BaseSettings
+
+
 class Settings(BaseSettings):
     APP_NAME: str
     ENV: str
@@ -13,8 +15,9 @@ class Settings(BaseSettings):
     COOKIE_HTTPONLY: bool
     COOKIE_SAMESITE: str
 
-    DATABASE_URL: str
-    
+    DATABASE_URL: str               # async
+    ALEMBIC_DATABASE_URL: str       # sync
+
     REDIS_HOST: str
     REDIS_PORT: int
 
@@ -26,5 +29,6 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
+
 
 settings = Settings()
