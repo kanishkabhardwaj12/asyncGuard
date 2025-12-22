@@ -6,6 +6,7 @@ from app.models.user import User, UserRole
 from app.models.organization import Organization
 from app.schemas.organization import OrgRequestModel , OrgResponseModel
 from app.config.settings import settings
+from app.models.api_endpoint import ApiEndpoints
 class OrgService:
     @staticmethod
     async def create_org(data : OrgRequestModel ,user : User, db:AsyncSession)->OrgResponseModel:
@@ -47,6 +48,10 @@ class OrgService:
         for u in users:
             u.org_id = None
             u.role = UserRole.viewer
+        api = await db.execute(select(ApiEndpoints).where(ApiEndpoints.org_id==org.id))
+        apis = api.scalars().all()
+        for a in apis:
+            await db.delete(a)
         await db.delete(org)
         await db.commit()
         return {
