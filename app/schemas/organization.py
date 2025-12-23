@@ -10,3 +10,7 @@ class DelOrgResponseModel(BaseModel):
     deleted_by:str
     class Config:
         from_attributes = True
+class OrgJoinRequestModel(BaseModel):
+    id: int
+    organization_id: int
+    user_id: int

@@ -4,7 +4,7 @@ from fastapi import HTTPException, status, Response
 
 from app.models.user import User, UserRole
 from app.models.organization import Organization
-from app.schemas.organization import OrgRequestModel , OrgResponseModel , DelOrgResponseModel
+from app.schemas.organization import OrgRequestModel , OrgResponseModel, OrgJoinRequestModel, DelOrgResponseModel
 from app.config.settings import settings
 from app.models.api_endpoint import ApiEndpoints
 class OrgService:
