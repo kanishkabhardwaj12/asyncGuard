@@ -4,5 +4,9 @@ class OrgRequestModel(BaseModel):
 class OrgResponseModel(BaseModel):
     id:int
     name:str
+class DelOrgResponseModel(BaseModel):
+    message:str
+    org_name:str
+    deleted_by:str
     class Config:
         from_attributes = True

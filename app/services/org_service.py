@@ -4,7 +4,7 @@ from fastapi import HTTPException, status, Response
 
 from app.models.user import User, UserRole
 from app.models.organization import Organization
-from app.schemas.organization import OrgRequestModel , OrgResponseModel
+from app.schemas.organization import OrgRequestModel , OrgResponseModel , DelOrgResponseModel
 from app.config.settings import settings
 from app.models.api_endpoint import ApiEndpoints
 class OrgService:
@@ -54,8 +54,8 @@ class OrgService:
             await db.delete(a)
         await db.delete(org)
         await db.commit()
-        return {
-            "detail":"Organization deleted successfully",
-            "org_name" : org.name,
-            "deleted_by" : user.email
-            }
+        return DelOrgResponseModel(
+            message="Organization deleted successfully",
+            org_name = org.name,
+            deleted_by = user.email
+            )
