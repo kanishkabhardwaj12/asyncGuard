@@ -34,3 +34,10 @@ celerybeat-schedule.db
 # Redis
 dump.rdb
 
+
+# Celery
+celerybeat-schedule
+celerybeat-schedule.db
+
+# Redis
+dump.rdb
