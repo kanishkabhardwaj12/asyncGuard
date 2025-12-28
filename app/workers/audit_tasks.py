@@ -1,8 +1,6 @@
-import asyncio
 from sqlalchemy import select
-
 from app.config.celery import celery_app
-from app.config.db import AsyncSessionLocal
+from app.config.db_sync import SessionLocal
 from app.services.audit_service import AuditService
 from app.models.api_endpoint import ApiEndpoints
 from app.models.dead_letter import DeadLetterTask
@@ -10,33 +8,32 @@ from app.models.dead_letter import DeadLetterTask
 
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=10)
 def run_audit_task(self, api_id: int):
+    db = SessionLocal()
     try:
-        asyncio.run(_run_single(api_id))
+        AuditService.run_audit_sync(api_id, db)
     except Exception as exc:
+        db.rollback()
         if self.request.retries >= self.max_retries:
-            asyncio.run(_send_to_dlq(api_id, exc, self.request.retries))
+            _send_to_dlq(api_id, exc, self.request.retries)
         raise self.retry(exc=exc)
-
-
-async def _run_single(api_id: int):
-    async with AsyncSessionLocal() as db:
-        await AuditService.run_audit(api_id, db)
+    finally:
+        db.close()
 
 
 @celery_app.task
 def run_all_audits():
-    asyncio.run(_run_all())
-
-
-async def _run_all():
-    async with AsyncSessionLocal() as db:
-        apis = (await db.execute(select(ApiEndpoints))).scalars().all()
+    db = SessionLocal()
+    try:
+        apis = db.execute(select(ApiEndpoints)).scalars().all()
         for api in apis:
             run_audit_task.delay(api.id)
+    finally:
+        db.close()
 
 
-async def _send_to_dlq(api_id: int, exc: Exception, retries: int):
-    async with AsyncSessionLocal() as db:
+def _send_to_dlq(api_id: int, exc: Exception, retries: int):
+    db = SessionLocal()
+    try:
         db.add(
             DeadLetterTask(
                 task_name="run_audit_task",
@@ -45,4 +42,6 @@ async def _send_to_dlq(api_id: int, exc: Exception, retries: int):
                 retry_count=retries,
             )
         )
-        await db.commit()
+        db.commit()
+    finally:
+        db.close()
