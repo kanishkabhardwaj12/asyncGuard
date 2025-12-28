@@ -19,8 +19,8 @@ celery_app.conf.update(
 import app.workers.audit_tasks 
 
 celery_app.conf.beat_schedule = {
-    "run-all-audits-every-2-minutes": {
+    "run-all-audits-hourly": {
         "task": "app.workers.audit_tasks.run_all_audits",
-        "schedule": crontab(minute="*/2"),
+        "schedule": crontab(minute=0),
     }
 }
