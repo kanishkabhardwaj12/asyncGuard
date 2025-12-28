@@ -33,6 +33,3 @@ celerybeat-schedule.db
 
 # Redis
 dump.rdb
-
-
-# 
