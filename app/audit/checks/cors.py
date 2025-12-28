@@ -1,26 +1,50 @@
 import requests
 from app.audit.checks.base import BaseCheck
 
-class CORSMisconfigurationCheck(BaseCheck):
+
+class CORSCheck(BaseCheck):
     name = "cors_misconfiguration"
     severity = "high"
 
     def execute(self, api):
         try:
-            headers = {"Origin": "https://evil.com"}
-            response = requests.get(api.url, headers=headers, timeout=5)
+            headers = {
+                "Origin": "https://evil.com"
+            }
 
-            acao = response.headers.get("Access-Control-Allow-Origin")
+            r = requests.get(api.url, headers=headers, timeout=5)
 
-            if acao == "*" or acao == "https://evil.com":
+            allow_origin = r.headers.get("access-control-allow-origin")
+            allow_creds = r.headers.get("access-control-allow-credentials")
+
+            issues = []
+
+            if allow_origin == "*":
+                issues.append("Wildcard ACAO")
+
+            if allow_origin == "https://evil.com":
+                issues.append("Reflected Origin")
+
+            if allow_creds == "true" and allow_origin in ("*", "https://evil.com"):
+                issues.append("Credentials allowed with insecure origin")
+
+            if issues:
                 return {
                     "passed": False,
-                    "details": {"issue": "Overly permissive CORS policy"},
+                    "details": {
+                        "issues": issues,
+                        "allow_origin": allow_origin,
+                        "allow_credentials": allow_creds,
+                    },
                 }
 
             return {
                 "passed": True,
-                "details": {"message": "CORS policy looks safe"},
+                "details": {
+                    "message": "No dangerous CORS misconfiguration detected",
+                    "allow_origin": allow_origin,
+                    "allow_credentials": allow_creds,
+                },
             }
 
         except Exception as e:
