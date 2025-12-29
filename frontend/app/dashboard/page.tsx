@@ -15,17 +15,15 @@ type OrgUser = {
   role: string;
 };
 
-// Response from /reports/results
 type BackendResponseItem = {
   api: { id: number; name: string; url: string };
   latest_audit: { id: number; score: number; time_window: string } | null;
 };
 
-// Response from /apis/error/{id}
 type ApiErrorResponse = {
-    api_id: number;
-    results: { details: any }[]; 
-  };
+  api_id: number;
+  results: { details: any }[];
+};
 
 type DashboardApi = {
   id: number;
@@ -36,7 +34,6 @@ type DashboardApi = {
   audit_score: number | null;
 };
 
-// Added "VIEW_ERRORS" to modal types
 type ModalType = "CREATE_API" | "DELETE_ORG" | "LEAVE_ORG" | "DELETE_API" | "HELP" | "MANAGE_USERS" | "REMOVE_USER_CONFIRM" | "VIEW_ERRORS" | null;
 
 export default function DashboardPage() {
@@ -52,6 +49,7 @@ export default function DashboardPage() {
   // Create API form states
   const [apiName, setApiName] = useState("");
   const [apiUrl, setApiUrl] = useState("");
+  const [createApiError, setCreateApiError] = useState(""); // NEW: State for validation message
   
   // User Management states
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
@@ -59,7 +57,7 @@ export default function DashboardPage() {
   
   // Error Viewing State
   const [selectedApiErrors, setSelectedApiErrors] = useState<string[]>([]);
-  const [selectedApiName, setSelectedApiName] = useState(""); // Just for display in modal
+  const [selectedApiName, setSelectedApiName] = useState("");
   
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -100,6 +98,7 @@ export default function DashboardPage() {
     setTargetApiId(null);
     setApiName("");
     setApiUrl("");
+    setCreateApiError(""); // Clear validation errors on close
     setUserToRemove(null);
     setSelectedApiErrors([]);
     setActionLoading(false);
@@ -129,32 +128,21 @@ export default function DashboardPage() {
     }
   };
 
-  // NEW: Fetch and Show Errors
   const handleViewErrors = async (api: DashboardApi) => {
     setSelectedApiName(api.name);
     setActiveModal("VIEW_ERRORS");
     setActionLoading(true);
-    
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/apis/error/${api.id}`, {
-        credentials: "include"
-      });
-
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/apis/error/${api.id}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch error logs");
-      
       const data: ApiErrorResponse = await res.json();
-      
-      // FIX: Safely convert objects to strings
       const errorStrings = data.results.map(r => {
         if (typeof r.details === "object" && r.details !== null) {
-          // formatting it to look like JSON but cleaner
           return JSON.stringify(r.details, null, 2).replace(/"/g, '').replace(/{|}/g, ''); 
         }
         return String(r.details);
       });
-
       setSelectedApiErrors(errorStrings);
-
     } catch (err: any) {
       setSelectedApiErrors([`SYSTEM ERROR: ${err.message}`]);
     } finally {
@@ -162,10 +150,10 @@ export default function DashboardPage() {
     }
   };
 
-
-  /* -------- USER REMOVAL LOGIC -------- */
+  /* -------- ACTIONS -------- */
   const initiateRemoveUser = (user: OrgUser) => { setUserToRemove(user); setActiveModal("REMOVE_USER_CONFIRM"); };
   const cancelRemoveUser = () => { setUserToRemove(null); setActiveModal("MANAGE_USERS"); };
+  
   const executeRemoveUser = async () => {
     if (!userToRemove) return;
     setActionLoading(true);
@@ -180,7 +168,6 @@ export default function DashboardPage() {
     } catch (err: any) { alert(err.message); } finally { setActionLoading(false); }
   };
 
-  /* -------- STANDARD ACTIONS -------- */
   const handleLogout = async () => { await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/auth/logout`, { method: "POST", credentials: "include" }); window.location.href = "/login"; };
   
   const confirmDeleteOrg = async () => {
@@ -201,8 +188,23 @@ export default function DashboardPage() {
     } catch (err: any) { alert(err.message); setActionLoading(false); }
   };
 
+  // UPDATED: Create API with inline validation
   const confirmCreateApi = async () => {
-    if (!apiName || !apiUrl) return;
+    // 1. Clear previous errors
+    setCreateApiError("");
+
+    // 2. Validate Empty Fields
+    if (!apiName || !apiUrl) {
+      setCreateApiError("All fields are required.");
+      return;
+    }
+
+    // 3. Validate URL format
+    if (!/^https?:\/\//i.test(apiUrl)) {
+      setCreateApiError("Invalid URL. Must start with http:// or https://");
+      return;
+    }
+
     setActionLoading(true);
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/apis/create`, {
@@ -211,7 +213,11 @@ export default function DashboardPage() {
       });
       if (!res.ok) throw new Error("Create failed");
       window.location.reload();
-    } catch (err: any) { alert(err.message); setActionLoading(false); }
+    } catch (err: any) { 
+      // 4. Show network error in the text field
+      setCreateApiError(err.message);
+      setActionLoading(false); 
+    }
   };
 
   const confirmDeleteApi = async () => {
@@ -240,29 +246,21 @@ export default function DashboardPage() {
         .dashboard-table td { padding: 1.5rem; border-bottom: 1px solid #222; color: #eee; }
         .dashboard-table tr:hover td { background: rgba(182, 255, 0, 0.03); }
         .action-link:hover { text-decoration: underline; text-shadow: 0 0 5px #b6ff00; }
-        
-        /* Clickable API Name Style */
         .api-name-cell { cursor: pointer; transition: color 0.2s; }
         .api-name-cell:hover { color: #b6ff00; text-shadow: 0 0 8px rgba(182, 255, 0, 0.5); text-decoration: underline; }
 
         /* Modal General */
         .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 999; backdrop-filter: blur(2px); }
         .modal { background: #000; border: 1px solid #b6ff00; padding: 2rem; width: 500px; box-shadow: 0 0 20px rgba(182, 255, 0, 0.2); }
-        
-        /* Modal Variants */
         .modal-large { width: 800px; max-height: 80vh; overflow-y: auto; }
         .modal-danger { border-color: #ff4d4d; box-shadow: 0 0 20px rgba(255, 77, 77, 0.2); }
         
-        /* Error List Styles */
-        .error-log { font-family: monospace; background: #111; padding: 1rem; border: 1px solid #333; max-height: 400px; overflow-y: auto; }
-        .error-entry { color: #ff4d4d; border-bottom: 1px dashed #333; padding: 0.5rem 0; display: flex; gap: 0.5rem; }
-        .error-entry:before { content: ">>"; color: #ff4d4d; opacity: 0.5; }
-        .error-entry:last-child { border-bottom: none; }
-        .no-errors { color: #b6ff00; text-align: center; padding: 2rem; font-style: italic; }
-
         .modal input { width: 100%; margin-bottom: 1rem; padding: 1rem; background: #111; border: 1px solid #333; color: #fff; font-family: monospace; font-size: 1.1rem; }
         .modal h3 { color: #b6ff00; margin-top: 0; text-transform: uppercase; font-size: 1.5rem; margin-bottom: 1rem; }
         .modal p { color: #ccc; margin-bottom: 2rem; font-family: monospace; line-height: 1.5; }
+
+        /* New Validation Style */
+        .validation-text { color: #ff4d4d; font-family: monospace; font-size: 0.9rem; margin-top: -0.5rem; margin-bottom: 1rem; font-weight: bold; }
 
         .btn { padding: 0.8rem 2rem; border: none; font-weight: bold; cursor: pointer; font-size: 1rem; font-family: monospace; }
         .btn-primary { background: #b6ff00; color: #000; margin-left: 1rem; }
@@ -280,6 +278,11 @@ export default function DashboardPage() {
         .check-item { margin-bottom: 1.5rem; border-bottom: 1px dashed #333; padding-bottom: 1rem; }
         .check-title { color: #b6ff00; font-weight: bold; display: block; margin-bottom: 0.5rem; font-family: monospace; }
         .check-desc { color: #aaa; font-size: 0.9rem; font-family: sans-serif; }
+        .error-log { font-family: monospace; background: #111; padding: 1rem; border: 1px solid #333; max-height: 400px; overflow-y: auto; }
+        .error-entry { color: #ff4d4d; border-bottom: 1px dashed #333; padding: 0.5rem 0; display: flex; gap: 0.5rem; }
+        .error-entry:before { content: ">>"; color: #ff4d4d; opacity: 0.5; }
+        .error-entry:last-child { border-bottom: none; }
+        .no-errors { color: #b6ff00; text-align: center; padding: 2rem; font-style: italic; }
       `}</style>
 
       <div className="scanline-bg" />
@@ -326,16 +329,7 @@ export default function DashboardPage() {
             {apis.length === 0 && (<tr><td colSpan={user?.role === "admin" ? 6 : 5} style={{ textAlign: "center", opacity: 0.5, padding: "6rem" }}>// NO APIS DETECTED IN SYSTEM</td></tr>)}
             {apis.map((api) => (
               <tr key={api.id}>
-                {/* NEW: Clickable Name Cell */}
-                <td 
-                  className="api-name-cell"
-                  style={{ fontWeight: "bold", color: "#fff", fontSize: "1.4rem" }}
-                  onClick={() => handleViewErrors(api)}
-                  title="Click to view failure logs"
-                >
-                  {api.name}
-                </td>
-                
+                <td className="api-name-cell" style={{ fontWeight: "bold", color: "#fff", fontSize: "1.4rem" }} onClick={() => handleViewErrors(api)} title="Click to view failure logs">{api.name}</td>
                 <td style={{ fontFamily: "monospace", opacity: 0.8 }}>{api.url}</td>
                 <td>{new Date(api.created_at).toLocaleDateString()}</td>
                 <td><span style={{ color: api.is_active ? "#b6ff00" : "#666", border: `1px solid ${api.is_active ? "#b6ff00" : "#666"}`, padding: "0.3rem 0.6rem", fontSize: "0.9rem", fontWeight: "bold" }}>{api.is_active ? "ACTIVE" : "INACTIVE"}</span></td>
@@ -357,12 +351,11 @@ export default function DashboardPage() {
 
       {/* -------- MODALS -------- */}
       
-      {/* 1. VIEW ERRORS (NEW) */}
+      {/* 1. VIEW ERRORS */}
       {activeModal === "VIEW_ERRORS" && (
         <div className="modal-overlay">
           <div className="modal modal-large">
             <h3>DIAGNOSTIC REPORT: <span style={{color: "#fff"}}>{selectedApiName}</span></h3>
-            
             <div className="error-log">
               {actionLoading ? (
                 <p style={{textAlign: 'center', padding: '1rem', margin: 0}}>FETCHING SYSTEM LOGS...</p>
@@ -371,13 +364,9 @@ export default function DashboardPage() {
                   <div key={idx} className="error-entry">{err}</div>
                 ))
               ) : (
-                <div className="no-errors">
-                  [SYSTEM SECURE]<br/>
-                  NO VULNERABILITIES DETECTED
-                </div>
+                <div className="no-errors">[SYSTEM SECURE]<br/>NO VULNERABILITIES DETECTED</div>
               )}
             </div>
-
             <div style={{ marginTop: "2rem", display: "flex", justifyContent: "flex-end" }}>
               <button className="btn btn-primary" onClick={closeModal}>CLOSE LOGS</button>
             </div>
@@ -428,13 +417,17 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* 4. CREATE API */}
+      {/* 4. CREATE API (UPDATED WITH VALIDATION) */}
       {activeModal === "CREATE_API" && (
         <div className="modal-overlay">
           <div className="modal">
             <h3>Initiate New Endpoint</h3>
             <input placeholder="API Identifier (Name)" value={apiName} onChange={(e) => setApiName(e.target.value)} autoFocus />
             <input placeholder="Endpoint URL (https://...)" value={apiUrl} onChange={(e) => setApiUrl(e.target.value)} />
+            
+            {/* Validation Message Area */}
+            {createApiError && <p className="validation-text">{createApiError}</p>}
+            
             <div style={{ marginTop: "1rem", display: "flex", justifyContent: "flex-end" }}>
               <button className="btn btn-cancel" onClick={closeModal}>CANCEL</button>
               <button className="btn btn-primary" onClick={confirmCreateApi} disabled={actionLoading}>{actionLoading ? "PROCESSING..." : "INITIALIZE"}</button>
