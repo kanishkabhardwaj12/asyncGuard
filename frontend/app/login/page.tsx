@@ -26,10 +26,10 @@ export default function LoginPage() {
     return;
   }
 
-  if (!validatePassword(password)) {
-    setError("Weak password");
-    return;
-  }
+  // if (!validatePassword(password)) {
+  //   setError("Weak password");
+  //   return;
+  // }
 
   try {
     const res = await fetch("http://localhost:8000/auth/login", {

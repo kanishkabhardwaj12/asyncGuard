@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { fetchOverviewStats } from "../features/stats/stats.api";
 
-export default function HomePage() {
+export default async function HomePage() {
+    const stats = await fetchOverviewStats();
   return (
     <>
       <div className="scanline-bg" />
@@ -22,12 +24,12 @@ export default function HomePage() {
         {/* Stats Section */}
         <div className="stats">
           <div className="stat-box">
-            <span className="stat-number">128</span>
+            <span className="stat-number">{stats.apis_registered}</span>
             <span className="stat-label">APIs Registered</span>
           </div>
 
           <div className="stat-box">
-            <span className="stat-number">2,431</span>
+            <span className="stat-number">{stats.audits_performed}</span>
             <span className="stat-label">Audits Performed</span>
           </div>
         </div>
