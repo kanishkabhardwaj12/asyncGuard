@@ -9,259 +9,240 @@ type User = {
   org_id: number | null;
 };
 
-type Api = {
+type BackendResponseItem = {
+  api: { id: number; name: string; url: string };
+  latest_audit: { id: number; score: number; time_window: string } | null;
+};
+
+type DashboardApi = {
   id: number;
   name: string;
   url: string;
   is_active: boolean;
   created_at: string;
-  audit_score?: number | null;
+  audit_score: number | null;
 };
+
+// Added "HELP" to the modal types
+type ModalType = "CREATE_API" | "DELETE_ORG" | "LEAVE_ORG" | "DELETE_API" | "HELP" | null;
 
 export default function DashboardPage() {
   const [user, setUser] = useState<User | null>(null);
-  const [apis, setApis] = useState<Api[]>([]);
+  const [apis, setApis] = useState<DashboardApi[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  /* -------- Create API Modal -------- */
-  const [showModal, setShowModal] = useState(false);
+  /* -------- Modal States -------- */
+  const [activeModal, setActiveModal] = useState<ModalType>(null);
+  const [targetApiId, setTargetApiId] = useState<number | null>(null);
   const [apiName, setApiName] = useState("");
   const [apiUrl, setApiUrl] = useState("");
+  const [actionLoading, setActionLoading] = useState(false);
 
   /* -------- INIT -------- */
   useEffect(() => {
     const init = async () => {
       try {
-        const meRes = await fetch(
-          `${process.env.NEXT_PUBLIC_API_BASE_URL}/auth/me`,
-          { credentials: "include" }
-        );
-
-        if (!meRes.ok) {
-          window.location.href = "/login";
-          return;
-        }
-
+        const meRes = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/auth/me`, { credentials: "include" });
+        if (!meRes.ok) { window.location.href = "/login"; return; }
         const me: User = await meRes.json();
-
-        if (me.org_id === null) {
-          window.location.href = "/org/onboarding";
-          return;
-        }
-
+        if (me.org_id === null) { window.location.href = "/org/onboarding"; return; }
         setUser(me);
 
-        const apiRes = await fetch(
-          `${process.env.NEXT_PUBLIC_API_BASE_URL}/apis/list`,
-          { credentials: "include" }
-        );
+        const apiRes = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/reports/results`, { 
+            credentials: "include", cache: "no-store", 
+            headers: { "Pragma": "no-cache", "Cache-Control": "no-cache" }
+        });
+        if (!apiRes.ok) throw new Error("Failed to load audit reports");
+        const rawData: BackendResponseItem[] = await apiRes.json();
 
-        if (!apiRes.ok) throw new Error("Failed to load APIs");
-
-        const apiList = await apiRes.json();
-        setApis(apiList);
+        setApis(rawData.map((item) => ({
+          id: item.api.id, name: item.api.name, url: item.api.url,
+          is_active: true, created_at: new Date().toISOString(),
+          audit_score: item.latest_audit ? item.latest_audit.score : null,
+        })));
       } catch (err: any) {
         setError(err.message);
       } finally {
         setLoading(false);
       }
     };
-
     init();
   }, []);
 
   /* -------- ACTIONS -------- */
-
+  
   const handleLogout = async () => {
-    try {
-      await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL}/auth/logout`,
-        { method: "POST", credentials: "include" }
-      );
-    } finally {
-      window.location.href = "/login";
-    }
+    await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/auth/logout`, { method: "POST", credentials: "include" });
+    window.location.href = "/login";
   };
 
-  const handleDeleteOrganisation = async () => {
-    if (!confirm("Delete organisation and all APIs?")) return;
-
+  const confirmDeleteOrg = async () => {
+    setActionLoading(true);
     try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL}/organizations/delete`,
-        { method: "DELETE", credentials: "include" }
-      );
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.detail || "Delete failed");
-      }
-
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/organizations/delete`, { method: "DELETE", credentials: "include" });
+      if (!res.ok) throw new Error("Delete failed");
       window.location.href = "/org/onboarding";
     } catch (err: any) {
       alert(err.message);
+      setActionLoading(false);
     }
   };
 
-  const handleCreateApi = async () => {
+  const confirmLeaveOrg = async () => {
+    setActionLoading(true);
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/organizations/leave`, { method: "POST", credentials: "include" });
+      if (!res.ok) throw new Error("Leave failed");
+      window.location.href = "/org/onboarding";
+    } catch (err: any) {
+      alert(err.message);
+      setActionLoading(false);
+    }
+  };
+
+  const confirmCreateApi = async () => {
     if (!apiName || !apiUrl) return;
-
+    setActionLoading(true);
     try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL}/apis/create`,
-        {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/apis/create`, {
+          method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name: apiName, url: apiUrl }),
-        }
-      );
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.detail || "Create failed");
-      }
-
-      const newApi = await res.json();
-      setApis((prev) => [...prev, newApi]);
-
-      setShowModal(false);
-      setApiName("");
-      setApiUrl("");
+      });
+      if (!res.ok) throw new Error("Create failed");
+      window.location.reload();
     } catch (err: any) {
       alert(err.message);
+      setActionLoading(false);
     }
   };
 
-  const handleDeleteApi = async (apiId: number) => {
-    if (!confirm("Delete this API?")) return;
-
+  const confirmDeleteApi = async () => {
+    if (!targetApiId) return;
+    setActionLoading(true);
     try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL}/apis/delete/${apiId}`,
-        {
-          method: "DELETE",
-          credentials: "include",
-        }
-      );
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.detail || "Delete failed");
-      }
-
-      setApis((prev) => prev.filter((api) => api.id !== apiId));
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/apis/delete/${targetApiId}`, { method: "DELETE", credentials: "include" });
+      if (!res.ok) throw new Error("Delete failed");
+      setApis((prev) => prev.filter((api) => api.id !== targetApiId));
+      closeModal();
     } catch (err: any) {
       alert(err.message);
+    } finally {
+      setActionLoading(false);
     }
   };
 
-  /* -------- STATES -------- */
-  if (loading) return <p style={{ textAlign: "center" }}>Loading…</p>;
-  if (error) return <p className="error-text">{error}</p>;
+  /* -------- HELPER: Modal Management -------- */
+  const closeModal = () => {
+    setActiveModal(null);
+    setTargetApiId(null);
+    setApiName("");
+    setApiUrl("");
+    setActionLoading(false);
+  };
+
+  const openDeleteApiModal = (id: number) => {
+    setTargetApiId(id);
+    setActiveModal("DELETE_API");
+  };
 
   /* -------- RENDER -------- */
+  if (loading) return <p style={{ textAlign: "center", marginTop: "20vh", color: "#b6ff00", fontSize: "1.5rem" }}>LOADING SYSTEM...</p>;
+  if (error) return <p className="error-text" style={{ textAlign: "center", marginTop: "20vh", fontSize: "1.5rem" }}>{error}</p>;
+
   return (
     <>
+      <style jsx global>{`
+        .scanline-bg { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.1) 50%, rgba(0,0,0,0.1)); background-size: 100% 4px; opacity: 0.05; pointer-events: none; z-index: 9999; }
+        ::-webkit-scrollbar { width: 8px; } ::-webkit-scrollbar-track { background: #000; } ::-webkit-scrollbar-thumb { background: #333; } ::-webkit-scrollbar-thumb:hover { background: #b6ff00; }
+        .dashboard-table { width: 100%; border-collapse: collapse; font-family: monospace; font-size: 1.25rem; }
+        .dashboard-table th { text-align: left; padding: 1.5rem; border-bottom: 2px solid #b6ff00; color: #b6ff00; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 700; }
+        .dashboard-table td { padding: 1.5rem; border-bottom: 1px solid #222; color: #eee; }
+        .dashboard-table tr:hover td { background: rgba(182, 255, 0, 0.03); }
+        .action-link:hover { text-decoration: underline; text-shadow: 0 0 5px #b6ff00; }
+        
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 999; backdrop-filter: blur(2px); }
+        .modal { background: #000; border: 1px solid #b6ff00; padding: 2rem; width: 500px; box-shadow: 0 0 20px rgba(182, 255, 0, 0.2); }
+        
+        /* Specific Help Modal Size */
+        .modal-help { width: 800px; max-height: 80vh; overflow-y: auto; }
+        
+        .modal input { width: 100%; margin-bottom: 1rem; padding: 1rem; background: #111; border: 1px solid #333; color: #fff; font-family: monospace; font-size: 1.1rem; }
+        .modal h3 { color: #b6ff00; margin-top: 0; text-transform: uppercase; font-size: 1.5rem; margin-bottom: 1rem; }
+        .modal p { color: #ccc; margin-bottom: 2rem; font-family: monospace; line-height: 1.5; }
+        
+        .check-item { margin-bottom: 1.5rem; border-bottom: 1px dashed #333; padding-bottom: 1rem; }
+        .check-title { color: #b6ff00; font-weight: bold; display: block; margin-bottom: 0.5rem; font-family: monospace; }
+        .check-desc { color: #aaa; font-size: 0.9rem; font-family: sans-serif; }
+
+        .btn { padding: 0.8rem 2rem; border: none; font-weight: bold; cursor: pointer; font-size: 1rem; font-family: monospace; }
+        .btn-primary { background: #b6ff00; color: #000; margin-left: 1rem; }
+        .btn-primary:hover { opacity: 0.8; }
+        .btn-danger { background: #ff4d4d; color: #000; margin-left: 1rem; }
+        .btn-danger:hover { opacity: 0.8; }
+        .btn-cancel { background: #333; color: #fff; }
+        .btn-cancel:hover { background: #444; }
+      `}</style>
+
       <div className="scanline-bg" />
-      <div className="vignette" />
 
       {/* HEADER */}
-      <div
-        style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
-          padding: "1.2rem 2rem",
-          display: "flex",
-          justifyContent: "space-between",
-          color: "#b6ff00",
-          zIndex: 100,
-        }}
-      >
-        <div style={{ fontWeight: 700, letterSpacing: "0.15em" }}>
-          ASYNCGUARD
-        </div>
-
-        <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)" }}>
-          <h1 style={{ margin: 0, fontSize: "2.8rem", letterSpacing: "0.3em" }}>
-            DASHBOARD
-          </h1>
-        </div>
-
-        <div style={{ textAlign: "right", fontSize: "0.75rem", letterSpacing: "0.12em" }}>
-          <div style={{ display: "flex", gap: "1.2rem" }}>
-            <span>[help]</span>
-
+      <div style={{ position: "fixed", top: 0, left: 0, right: 0, height: "140px", padding: "0 3rem", display: "flex", alignItems: "center", justifyContent: "space-between", color: "#b6ff00", backgroundColor: "#000", zIndex: 100, borderBottom: "1px solid #222" }}>
+        <div style={{ fontWeight: 700, letterSpacing: "0.15em", fontSize: "1.5rem", width: "250px" }}>ASYNCGUARD</div>
+        <div style={{ flex: 1, textAlign: "center" }}><h1 style={{ margin: 0, fontSize: "4rem", textShadow: "0 0 10px rgba(182, 255, 0, 0.3)" }}>DASHBOARD</h1></div>
+        <div style={{ width: "auto", minWidth: "250px", textAlign: "right", fontSize: "1rem", letterSpacing: "0.12em" }}>
+          <div style={{ display: "flex", gap: "1.5rem", justifyContent: "flex-end", marginBottom: "0.8rem", whiteSpace: "nowrap" }}>
+            
+            {/* HELP LINK - Now triggers modal */}
+            <span className="action-link" onClick={() => setActiveModal("HELP")} style={{cursor: 'pointer'}}>[help]</span>
+            
             {user?.role === "admin" ? (
               <>
-                <span>[manage users]</span>
-                <span onClick={handleDeleteOrganisation} style={{ cursor: "pointer" }}>
-                  [delete organisation]
-                </span>
+                <span className="action-link" style={{cursor: 'pointer'}}>[users]</span>
+                <span className="action-link" onClick={() => setActiveModal("DELETE_ORG")} style={{ cursor: "pointer", color: '#ff6b6b' }}>[destroy org]</span>
               </>
             ) : (
-              <span>[leave organisation]</span>
+              <span className="action-link" onClick={() => setActiveModal("LEAVE_ORG")} style={{ cursor: "pointer", color: '#ff6b6b' }}>[leave org]</span>
             )}
-
-            <span onClick={handleLogout} style={{ cursor: "pointer" }}>
-              [logout]
-            </span>
+            <span className="action-link" onClick={handleLogout} style={{ cursor: "pointer" }}>[logout]</span>
           </div>
-
           {user?.role === "admin" && (
-            <button
-              className="start-btn"
-              style={{ marginTop: "0.8rem" }}
-              onClick={() => setShowModal(true)}
-            >
-              CREATE NEW API
+            <button style={{ background: "transparent", border: "1px solid #b6ff00", color: "#b6ff00", padding: "0.5rem 1.2rem", fontSize: "0.9rem", fontFamily: "monospace", cursor: "pointer", marginTop: "0.2rem" }} onClick={() => setActiveModal("CREATE_API")}>
+              + CREATE NEW API
             </button>
           )}
         </div>
       </div>
 
-      {/* TABLE */}
-      <main style={{ paddingTop: "6rem", padding: "0 4rem" }}>
-        <table style={{ width: "100%", marginTop: "2rem", borderCollapse: "collapse" }}>
+      {/* MAIN CONTENT */}
+      <main style={{ marginTop: "180px", paddingBottom: "4rem", width: "95%", maxWidth: "1800px", marginLeft: "auto", marginRight: "auto" }}>
+        <table className="dashboard-table">
           <thead>
             <tr>
-              <th>Name</th>
-              <th>URL</th>
-              <th>Created</th>
-              <th>Status</th>
-              <th>Audit Score</th>
-              {user?.role === "admin" && <th>Actions</th>}
+              <th style={{ width: "20%" }}>Name</th>
+              <th style={{ width: "35%" }}>URL</th>
+              <th style={{ width: "15%" }}>Created</th>
+              <th style={{ width: "10%" }}>Status</th>
+              <th style={{ width: "10%" }}>Score</th>
+              {user?.role === "admin" && <th style={{ width: "10%", textAlign: "right" }}>Actions</th>}
             </tr>
           </thead>
-
           <tbody>
-            {apis.length === 0 && (
-              <tr>
-                <td colSpan={user?.role === "admin" ? 6 : 5} style={{ textAlign: "center", opacity: 0.7 }}>
-                  No APIs registered yet
-                </td>
-              </tr>
-            )}
-
+            {apis.length === 0 && (<tr><td colSpan={user?.role === "admin" ? 6 : 5} style={{ textAlign: "center", opacity: 0.5, padding: "6rem" }}>// NO APIS DETECTED IN SYSTEM</td></tr>)}
             {apis.map((api) => (
               <tr key={api.id}>
-                <td>{api.name}</td>
-                <td>{api.url}</td>
+                <td style={{ fontWeight: "bold", color: "#fff", fontSize: "1.4rem" }}>{api.name}</td>
+                <td style={{ fontFamily: "monospace", opacity: 0.8 }}>{api.url}</td>
                 <td>{new Date(api.created_at).toLocaleDateString()}</td>
-                <td>{api.is_active ? "Active" : "Inactive"}</td>
-                <td>{api.audit_score ?? "—"}</td>
-
+                <td><span style={{ color: api.is_active ? "#b6ff00" : "#666", border: `1px solid ${api.is_active ? "#b6ff00" : "#666"}`, padding: "0.3rem 0.6rem", fontSize: "0.9rem", fontWeight: "bold" }}>{api.is_active ? "ACTIVE" : "INACTIVE"}</span></td>
+                <td style={{ fontSize: "1.2rem", fontWeight: "bold" }}>
+                    {api.audit_score !== null && api.audit_score !== undefined ? (
+                        <span style={{ color: api.audit_score >= 90 ? "#b6ff00" : (api.audit_score >= 50 ? "#ffeb3b" : "#ff4d4d") }}>{api.audit_score}</span>
+                    ) : (<span style={{ opacity: 0.3 }}>N/A</span>)}
+                </td>
                 {user?.role === "admin" && (
-                  <td>
-                    <span
-                      style={{ color: "#ff4d4d", cursor: "pointer" }}
-                      onClick={() => handleDeleteApi(api.id)}
-                    >
-                      Delete
-                    </span>
+                  <td style={{ textAlign: "right" }}>
+                    <span style={{ color: "#ff4d4d", cursor: "pointer", fontWeight: "bold" }} onClick={() => openDeleteApiModal(api.id)}>[DELETE]</span>
                   </td>
                 )}
               </tr>
@@ -270,26 +251,123 @@ export default function DashboardPage() {
         </table>
       </main>
 
-      {/* CREATE API MODAL */}
-      {showModal && (
+      {/* -------- MODALS -------- */}
+      
+      {/* 1. CREATE API */}
+      {activeModal === "CREATE_API" && (
         <div className="modal-overlay">
           <div className="modal">
-            <h3>Create API</h3>
+            <h3>Initiate New Endpoint</h3>
+            <input placeholder="API Identifier (Name)" value={apiName} onChange={(e) => setApiName(e.target.value)} autoFocus />
+            <input placeholder="Endpoint URL (https://...)" value={apiUrl} onChange={(e) => setApiUrl(e.target.value)} />
+            <div style={{ marginTop: "1rem", display: "flex", justifyContent: "flex-end" }}>
+              <button className="btn btn-cancel" onClick={closeModal}>CANCEL</button>
+              <button className="btn btn-primary" onClick={confirmCreateApi} disabled={actionLoading}>{actionLoading ? "PROCESSING..." : "INITIALIZE"}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
-            <input
-              placeholder="API Name"
-              value={apiName}
-              onChange={(e) => setApiName(e.target.value)}
-            />
-            <input
-              placeholder="API URL"
-              value={apiUrl}
-              onChange={(e) => setApiUrl(e.target.value)}
-            />
+      {/* 2. DELETE ORG */}
+      {activeModal === "DELETE_ORG" && (
+        <div className="modal-overlay">
+          <div className="modal" style={{ borderColor: "#ff4d4d", boxShadow: "0 0 20px rgba(255, 77, 77, 0.2)" }}>
+            <h3 style={{ color: "#ff4d4d" }}>CRITICAL WARNING</h3>
+            <p>You are about to <strong>PERMANENTLY DESTROY</strong> this organization and all associated data. This action cannot be undone.</p>
+            <div style={{ marginTop: "1rem", display: "flex", justifyContent: "flex-end" }}>
+              <button className="btn btn-cancel" onClick={closeModal}>ABORT</button>
+              <button className="btn btn-danger" onClick={confirmDeleteOrg} disabled={actionLoading}>{actionLoading ? "DESTROYING..." : "CONFIRM DESTRUCTION"}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
-            <div style={{ marginTop: "1rem" }}>
-              <button onClick={handleCreateApi}>Create</button>
-              <button onClick={() => setShowModal(false)}>Cancel</button>
+      {/* 3. LEAVE ORG */}
+      {activeModal === "LEAVE_ORG" && (
+        <div className="modal-overlay">
+          <div className="modal" style={{ borderColor: "#ffeb3b", boxShadow: "0 0 20px rgba(255, 235, 59, 0.2)" }}>
+            <h3 style={{ color: "#ffeb3b" }}>LEAVE ORGANIZATION</h3>
+            <p>Are you sure you want to disconnect from this organization? You will lose access until re-invited.</p>
+            <div style={{ marginTop: "1rem", display: "flex", justifyContent: "flex-end" }}>
+              <button className="btn btn-cancel" onClick={closeModal}>CANCEL</button>
+              <button className="btn btn-danger" style={{ background: "#ffeb3b", color: "#000" }} onClick={confirmLeaveOrg} disabled={actionLoading}>{actionLoading ? "LEAVING..." : "CONFIRM LEAVE"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 4. DELETE API */}
+      {activeModal === "DELETE_API" && (
+        <div className="modal-overlay">
+          <div className="modal" style={{ borderColor: "#ff4d4d" }}>
+            <h3 style={{ color: "#ff4d4d" }}>DELETE ENDPOINT</h3>
+            <p>Terminate this API endpoint monitoring? All historical audit data for this specific API will be erased.</p>
+            <div style={{ marginTop: "1rem", display: "flex", justifyContent: "flex-end" }}>
+              <button className="btn btn-cancel" onClick={closeModal}>CANCEL</button>
+              <button className="btn btn-danger" onClick={confirmDeleteApi} disabled={actionLoading}>{actionLoading ? "DELETING..." : "TERMINATE"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. HELP MODAL */}
+      {activeModal === "HELP" && (
+        <div className="modal-overlay">
+          <div className="modal modal-help">
+            <h3>SYSTEM AUDIT PROTOCOLS</h3>
+            
+            <div className="check-item">
+              <span className="check-title">Authentication Required Check</span>
+              <span className="check-desc">Ensures protected APIs cannot be accessed without valid authentication tokens.</span>
+            </div>
+            
+            <div className="check-item">
+              <span className="check-title">Authorization (RBAC) Check</span>
+              <span className="check-desc">Verifies only allowed roles (admin, auditor, viewer) can access specific endpoints.</span>
+            </div>
+            
+            <div className="check-item">
+              <span className="check-title">HTTPS Enforcement Check</span>
+              <span className="check-desc">Confirms APIs are not accessible over plain HTTP to prevent interception.</span>
+            </div>
+            
+            <div className="check-item">
+              <span className="check-title">HTTP Method Restriction Check</span>
+              <span className="check-desc">Ensures only intended HTTP methods (GET/POST/etc.) are enabled for the resource.</span>
+            </div>
+            
+            <div className="check-item">
+              <span className="check-title">Input Validation Check</span>
+              <span className="check-desc">Confirms APIs reject malformed or missing inputs with appropriate status codes.</span>
+            </div>
+            
+            <div className="check-item">
+              <span className="check-title">Error Handling Consistency Check</span>
+              <span className="check-desc">Ensures error responses do not leak stack traces or sensitive infrastructure info.</span>
+            </div>
+            
+            <div className="check-item">
+              <span className="check-title">Rate Limiting / Abuse Protection Check</span>
+              <span className="check-desc">Detects missing request throttling on sensitive endpoints to prevent DoS.</span>
+            </div>
+            
+            <div className="check-item">
+              <span className="check-title">Sensitive Header Leakage Check</span>
+              <span className="check-desc">Ensures server version banners (Server, X-Powered-By) are hidden from response headers.</span>
+            </div>
+            
+            <div className="check-item">
+              <span className="check-title">CORS Misconfiguration Check</span>
+              <span className="check-desc">Ensures APIs do not allow overly permissive cross-origin access (e.g., Access-Control-Allow-Origin: *).</span>
+            </div>
+            
+            <div className="check-item" style={{borderBottom: 'none'}}>
+              <span className="check-title">Idempotency Safety Check</span>
+              <span className="check-desc">Ensures retries on non-safe methods (POST/PUT) do not create duplicate resources.</span>
+            </div>
+
+            <div style={{ marginTop: "2rem", display: "flex", justifyContent: "flex-end" }}>
+              <button className="btn btn-primary" onClick={closeModal}>CLOSE TERMINAL</button>
             </div>
           </div>
         </div>
