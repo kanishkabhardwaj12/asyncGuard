@@ -63,7 +63,7 @@ class OrgService:
     async def join_org(data:JoinOrgRequestModel ,user : User, db:AsyncSession):
         if user.org_id is not None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail="User already belongs to an organization")
-        result = await db.execute(select(Organization).where(Organization.id==data.organization_id))
+        result = await db.execute(select(Organization).where(Organization.name==data.organization_name))
         org = result.scalar_one_or_none()
         if not org:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail="Organization not found")

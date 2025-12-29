@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 
 export default function JoinOrgPage() {
-  const [orgId, setOrgId] = useState("");
+  const [orgName, setOrgName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -18,7 +18,7 @@ export default function JoinOrgPage() {
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          organization_id: Number(orgId), // IMPORTANT
+          organization_name:orgName, // IMPORTANT
         }),
       });
 
@@ -56,11 +56,11 @@ export default function JoinOrgPage() {
 
         <div className="stats">
           <div className="stat-box">
-            <span className="stat-label">Organization ID</span>
+            <span className="stat-label">Organization Name</span>
             <input
-              value={orgId}
-              onChange={(e) => setOrgId(e.target.value)}
-              placeholder="123"
+              value={orgName}
+              onChange={(e) => setOrgName(e.target.value)}
+              placeholder="My Organization"
               disabled={loading}
             />
           </div>

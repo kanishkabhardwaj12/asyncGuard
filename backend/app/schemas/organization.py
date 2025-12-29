@@ -11,7 +11,7 @@ class DelOrgResponseModel(BaseModel):
     class Config:
         from_attributes = True
 class JoinOrgRequestModel(BaseModel):
-    organization_id: int
+    organization_name: str
 class RemoveUserFromOrgResponseModel(BaseModel):
     message: str
     user_email: str
