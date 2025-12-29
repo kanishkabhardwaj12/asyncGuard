@@ -7,6 +7,7 @@ type User = {
   email: string;
   role: "admin" | "viewer" | "auditor";
   org_id: number | null;
+  org_name?: string;
 };
 
 type OrgUser = {
@@ -15,17 +16,15 @@ type OrgUser = {
   role: string;
 };
 
-// Response from /reports/results
 type BackendResponseItem = {
   api: { id: number; name: string; url: string };
   latest_audit: { id: number; score: number; time_window: string } | null;
 };
 
-// Response from /apis/error/{id}
 type ApiErrorResponse = {
-    api_id: number;
-    results: { details: any }[]; 
-  };
+  api_id: number;
+  results: { details: any }[];
+};
 
 type DashboardApi = {
   id: number;
@@ -36,7 +35,6 @@ type DashboardApi = {
   audit_score: number | null;
 };
 
-// Added "VIEW_ERRORS" to modal types
 type ModalType = "CREATE_API" | "DELETE_ORG" | "LEAVE_ORG" | "DELETE_API" | "HELP" | "MANAGE_USERS" | "REMOVE_USER_CONFIRM" | "VIEW_ERRORS" | null;
 
 export default function DashboardPage() {
@@ -48,19 +46,15 @@ export default function DashboardPage() {
   /* -------- Modal States -------- */
   const [activeModal, setActiveModal] = useState<ModalType>(null);
   const [targetApiId, setTargetApiId] = useState<number | null>(null);
-  
-  // Create API form states
   const [apiName, setApiName] = useState("");
   const [apiUrl, setApiUrl] = useState("");
+  const [createApiError, setCreateApiError] = useState("");
   
-  // User Management states
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [userToRemove, setUserToRemove] = useState<OrgUser | null>(null);
   
-  // Error Viewing State
   const [selectedApiErrors, setSelectedApiErrors] = useState<string[]>([]);
-  const [selectedApiName, setSelectedApiName] = useState(""); // Just for display in modal
-  
+  const [selectedApiName, setSelectedApiName] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
 
   /* -------- INIT -------- */
@@ -71,7 +65,17 @@ export default function DashboardPage() {
         if (!meRes.ok) { window.location.href = "/login"; return; }
         const me: User = await meRes.json();
         if (me.org_id === null) { window.location.href = "/org/onboarding"; return; }
-        setUser(me);
+
+        let fetchedOrgName = "";
+        try {
+          const orgRes = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/organizations/info`, { credentials: "include" });
+          if (orgRes.ok) {
+            const orgData = await orgRes.json();
+            fetchedOrgName = orgData.name;
+          }
+        } catch (e) { console.warn("Could not fetch org info", e); }
+
+        setUser({ ...me, org_name: fetchedOrgName });
 
         const apiRes = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/reports/results`, { 
             credentials: "include", cache: "no-store", 
@@ -96,91 +100,55 @@ export default function DashboardPage() {
 
   /* -------- HELPER: Modal Management -------- */
   const closeModal = () => {
-    setActiveModal(null);
-    setTargetApiId(null);
-    setApiName("");
-    setApiUrl("");
-    setUserToRemove(null);
-    setSelectedApiErrors([]);
-    setActionLoading(false);
+    setActiveModal(null); setTargetApiId(null); setApiName(""); setApiUrl("");
+    setCreateApiError(""); setUserToRemove(null); setSelectedApiErrors([]); setActionLoading(false);
   };
-
-  const openDeleteApiModal = (id: number) => {
-    setTargetApiId(id);
-    setActiveModal("DELETE_API");
-  };
-
+  const openDeleteApiModal = (id: number) => { setTargetApiId(id); setActiveModal("DELETE_API"); };
+  
   const openManageUsersModal = async () => {
-    setActiveModal("MANAGE_USERS");
+    setActiveModal("MANAGE_USERS"); 
     setActionLoading(true);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/user/list`, {
-        method: "PATCH", 
-        credentials: "include"
-      });
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/user/list`, { method: "PATCH", credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch users");
-      const data = await res.json();
+      const data = await res.json(); 
       setOrgUsers(data);
-    } catch (err: any) {
-      alert("Error fetching users: " + err.message);
-      closeModal();
-    } finally {
-      setActionLoading(false);
+    } catch (err: any) { 
+      alert("Error: " + err.message); 
+      closeModal(); 
+    } finally { 
+      setActionLoading(false); 
     }
   };
-
-  // NEW: Fetch and Show Errors
+  
   const handleViewErrors = async (api: DashboardApi) => {
-    setSelectedApiName(api.name);
-    setActiveModal("VIEW_ERRORS");
-    setActionLoading(true);
-    
+    setSelectedApiName(api.name); setActiveModal("VIEW_ERRORS"); setActionLoading(true);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/apis/error/${api.id}`, {
-        credentials: "include"
-      });
-
-      if (!res.ok) throw new Error("Failed to fetch error logs");
-      
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/apis/error/${api.id}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch logs");
       const data: ApiErrorResponse = await res.json();
-      
-      // FIX: Safely convert objects to strings
       const errorStrings = data.results.map(r => {
-        if (typeof r.details === "object" && r.details !== null) {
-          // formatting it to look like JSON but cleaner
-          return JSON.stringify(r.details, null, 2).replace(/"/g, '').replace(/{|}/g, ''); 
-        }
+        if (typeof r.details === "object" && r.details !== null) return JSON.stringify(r.details, null, 2).replace(/"/g, '').replace(/{|}/g, '');
         return String(r.details);
       });
-
       setSelectedApiErrors(errorStrings);
-
-    } catch (err: any) {
-      setSelectedApiErrors([`SYSTEM ERROR: ${err.message}`]);
-    } finally {
-      setActionLoading(false);
-    }
+    } catch (err: any) { setSelectedApiErrors([`SYSTEM ERROR: ${err.message}`]); } finally { setActionLoading(false); }
   };
 
-
-  /* -------- USER REMOVAL LOGIC -------- */
+  /* -------- ACTIONS -------- */
   const initiateRemoveUser = (user: OrgUser) => { setUserToRemove(user); setActiveModal("REMOVE_USER_CONFIRM"); };
   const cancelRemoveUser = () => { setUserToRemove(null); setActiveModal("MANAGE_USERS"); };
   const executeRemoveUser = async () => {
-    if (!userToRemove) return;
-    setActionLoading(true);
+    if (!userToRemove) return; setActionLoading(true);
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/organizations/remove_user`, {
-        method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userToRemove.id })
+        method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: userToRemove.id })
       });
       if (!res.ok) { const data = await res.json(); throw new Error(data.detail || "Failed to remove user"); }
-      setOrgUsers((prev) => prev.filter((u) => u.id !== userToRemove.id));
-      setActiveModal("MANAGE_USERS"); setUserToRemove(null);
+      setOrgUsers((prev) => prev.filter((u) => u.id !== userToRemove.id)); setActiveModal("MANAGE_USERS"); setUserToRemove(null);
     } catch (err: any) { alert(err.message); } finally { setActionLoading(false); }
   };
 
-  /* -------- STANDARD ACTIONS -------- */
   const handleLogout = async () => { await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/auth/logout`, { method: "POST", credentials: "include" }); window.location.href = "/login"; };
   
   const confirmDeleteOrg = async () => {
@@ -202,7 +170,9 @@ export default function DashboardPage() {
   };
 
   const confirmCreateApi = async () => {
-    if (!apiName || !apiUrl) return;
+    setCreateApiError("");
+    if (!apiName || !apiUrl) { setCreateApiError("All fields required."); return; }
+    if (!/^https?:\/\//i.test(apiUrl)) { setCreateApiError("Invalid URL. Must start with http:// or https://"); return; }
     setActionLoading(true);
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/apis/create`, {
@@ -211,17 +181,15 @@ export default function DashboardPage() {
       });
       if (!res.ok) throw new Error("Create failed");
       window.location.reload();
-    } catch (err: any) { alert(err.message); setActionLoading(false); }
+    } catch (err: any) { setCreateApiError(err.message); setActionLoading(false); }
   };
 
   const confirmDeleteApi = async () => {
-    if (!targetApiId) return;
-    setActionLoading(true);
+    if (!targetApiId) return; setActionLoading(true);
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/apis/delete/${targetApiId}`, { method: "DELETE", credentials: "include" });
       if (!res.ok) throw new Error("Delete failed");
-      setApis((prev) => prev.filter((api) => api.id !== targetApiId));
-      closeModal();
+      setApis((prev) => prev.filter((api) => api.id !== targetApiId)); closeModal();
     } catch (err: any) { alert(err.message); } finally { setActionLoading(false); }
   };
 
@@ -234,36 +202,22 @@ export default function DashboardPage() {
       <style jsx global>{`
         .scanline-bg { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.1) 50%, rgba(0,0,0,0.1)); background-size: 100% 4px; opacity: 0.05; pointer-events: none; z-index: 9999; }
         ::-webkit-scrollbar { width: 8px; } ::-webkit-scrollbar-track { background: #000; } ::-webkit-scrollbar-thumb { background: #333; } ::-webkit-scrollbar-thumb:hover { background: #b6ff00; }
-        
         .dashboard-table { width: 100%; border-collapse: collapse; font-family: monospace; font-size: 1.25rem; }
         .dashboard-table th { text-align: left; padding: 1.5rem; border-bottom: 2px solid #b6ff00; color: #b6ff00; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 700; }
         .dashboard-table td { padding: 1.5rem; border-bottom: 1px solid #222; color: #eee; }
         .dashboard-table tr:hover td { background: rgba(182, 255, 0, 0.03); }
         .action-link:hover { text-decoration: underline; text-shadow: 0 0 5px #b6ff00; }
-        
-        /* Clickable API Name Style */
         .api-name-cell { cursor: pointer; transition: color 0.2s; }
         .api-name-cell:hover { color: #b6ff00; text-shadow: 0 0 8px rgba(182, 255, 0, 0.5); text-decoration: underline; }
 
-        /* Modal General */
         .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 999; backdrop-filter: blur(2px); }
         .modal { background: #000; border: 1px solid #b6ff00; padding: 2rem; width: 500px; box-shadow: 0 0 20px rgba(182, 255, 0, 0.2); }
-        
-        /* Modal Variants */
         .modal-large { width: 800px; max-height: 80vh; overflow-y: auto; }
         .modal-danger { border-color: #ff4d4d; box-shadow: 0 0 20px rgba(255, 77, 77, 0.2); }
-        
-        /* Error List Styles */
-        .error-log { font-family: monospace; background: #111; padding: 1rem; border: 1px solid #333; max-height: 400px; overflow-y: auto; }
-        .error-entry { color: #ff4d4d; border-bottom: 1px dashed #333; padding: 0.5rem 0; display: flex; gap: 0.5rem; }
-        .error-entry:before { content: ">>"; color: #ff4d4d; opacity: 0.5; }
-        .error-entry:last-child { border-bottom: none; }
-        .no-errors { color: #b6ff00; text-align: center; padding: 2rem; font-style: italic; }
-
         .modal input { width: 100%; margin-bottom: 1rem; padding: 1rem; background: #111; border: 1px solid #333; color: #fff; font-family: monospace; font-size: 1.1rem; }
         .modal h3 { color: #b6ff00; margin-top: 0; text-transform: uppercase; font-size: 1.5rem; margin-bottom: 1rem; }
         .modal p { color: #ccc; margin-bottom: 2rem; font-family: monospace; line-height: 1.5; }
-
+        .validation-text { color: #ff4d4d; font-family: monospace; font-size: 0.9rem; margin-top: -0.5rem; margin-bottom: 1rem; font-weight: bold; }
         .btn { padding: 0.8rem 2rem; border: none; font-weight: bold; cursor: pointer; font-size: 1rem; font-family: monospace; }
         .btn-primary { background: #b6ff00; color: #000; margin-left: 1rem; }
         .btn-primary:hover { opacity: 0.8; }
@@ -280,6 +234,11 @@ export default function DashboardPage() {
         .check-item { margin-bottom: 1.5rem; border-bottom: 1px dashed #333; padding-bottom: 1rem; }
         .check-title { color: #b6ff00; font-weight: bold; display: block; margin-bottom: 0.5rem; font-family: monospace; }
         .check-desc { color: #aaa; font-size: 0.9rem; font-family: sans-serif; }
+        .error-log { font-family: monospace; background: #111; padding: 1rem; border: 1px solid #333; max-height: 400px; overflow-y: auto; }
+        .error-entry { color: #ff4d4d; border-bottom: 1px dashed #333; padding: 0.5rem 0; display: flex; gap: 0.5rem; }
+        .error-entry:before { content: ">>"; color: #ff4d4d; opacity: 0.5; }
+        .error-entry:last-child { border-bottom: none; }
+        .no-errors { color: #b6ff00; text-align: center; padding: 2rem; font-style: italic; }
       `}</style>
 
       <div className="scanline-bg" />
@@ -288,28 +247,46 @@ export default function DashboardPage() {
       <div style={{ position: "fixed", top: 0, left: 0, right: 0, height: "140px", padding: "0 3rem", display: "flex", alignItems: "center", justifyContent: "space-between", color: "#b6ff00", backgroundColor: "#000", zIndex: 100, borderBottom: "1px solid #222" }}>
         <div style={{ fontWeight: 700, letterSpacing: "0.15em", fontSize: "1.5rem", width: "250px" }}>ASYNCGUARD</div>
         <div style={{ flex: 1, textAlign: "center" }}><h1 style={{ margin: 0, fontSize: "4rem", letterSpacing: "0.3em", textShadow: "0 0 10px rgba(182, 255, 0, 0.3)" }}>DASHBOARD</h1></div>
-        <div style={{ width: "auto", minWidth: "250px", textAlign: "right", fontSize: "1rem", letterSpacing: "0.12em" }}>
-          <div style={{ display: "flex", gap: "1.5rem", justifyContent: "flex-end", marginBottom: "0.8rem", whiteSpace: "nowrap" }}>
+        
+        <div style={{ width: "auto", minWidth: "250px", textAlign: "right", fontSize: "1rem", letterSpacing: "0.12em", display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+          
+          <div style={{ display: "flex", gap: "1.5rem", justifyContent: "flex-end", marginBottom: "0.2rem", whiteSpace: "nowrap" }}>
+            
+            {/* 1. Org Name (Clickable for ALL, Now on Left) */}
+            {user && (
+              <span 
+                className="action-link"
+                style={{ cursor: 'pointer', color: '#b6ff00' }}
+                onClick={openManageUsersModal}
+                title="View Org Users"
+              >
+                [{user.org_name || `ORG #${user.org_id}`}]
+              </span>
+            )}
+            
+            {/* 2. Help (Now on Right of Org) */}
             <span className="action-link" onClick={() => setActiveModal("HELP")} style={{cursor: 'pointer'}}>[help]</span>
+
+            {/* 3. Org Actions */}
             {user?.role === "admin" ? (
-              <>
-                <span className="action-link" onClick={openManageUsersModal} style={{cursor: 'pointer'}}>[users]</span>
-                <span className="action-link" onClick={() => setActiveModal("DELETE_ORG")} style={{ cursor: "pointer", color: '#ff6b6b' }}>[destroy org]</span>
-              </>
+              <span className="action-link" onClick={() => setActiveModal("DELETE_ORG")} style={{ cursor: "pointer", color: '#ff6b6b' }}>[destroy org]</span>
             ) : (
               <span className="action-link" onClick={() => setActiveModal("LEAVE_ORG")} style={{ cursor: "pointer", color: '#ff6b6b' }}>[leave org]</span>
             )}
+            
+            {/* 4. Logout */}
             <span className="action-link" onClick={handleLogout} style={{ cursor: "pointer" }}>[logout]</span>
           </div>
+          
+          {/* Create API Button */}
           {user?.role === "admin" && (
-            <button style={{ background: "transparent", border: "1px solid #b6ff00", color: "#b6ff00", padding: "0.5rem 1.2rem", fontSize: "0.9rem", fontFamily: "monospace", cursor: "pointer", marginTop: "0.2rem" }} onClick={() => setActiveModal("CREATE_API")}>
+            <button style={{ background: "transparent", border: "1px solid #b6ff00", color: "#b6ff00", padding: "0.5rem 1.2rem", fontSize: "0.9rem", fontFamily: "monospace", cursor: "pointer", marginTop: "0.8rem" }} onClick={() => setActiveModal("CREATE_API")}>
               + CREATE NEW API
             </button>
           )}
         </div>
       </div>
 
-      {/* MAIN CONTENT */}
       <main style={{ marginTop: "180px", paddingBottom: "4rem", width: "95%", maxWidth: "1800px", marginLeft: "auto", marginRight: "auto" }}>
         <table className="dashboard-table">
           <thead>
@@ -326,16 +303,7 @@ export default function DashboardPage() {
             {apis.length === 0 && (<tr><td colSpan={user?.role === "admin" ? 6 : 5} style={{ textAlign: "center", opacity: 0.5, padding: "6rem" }}>// NO APIS DETECTED IN SYSTEM</td></tr>)}
             {apis.map((api) => (
               <tr key={api.id}>
-                {/* NEW: Clickable Name Cell */}
-                <td 
-                  className="api-name-cell"
-                  style={{ fontWeight: "bold", color: "#fff", fontSize: "1.4rem" }}
-                  onClick={() => handleViewErrors(api)}
-                  title="Click to view failure logs"
-                >
-                  {api.name}
-                </td>
-                
+                <td className="api-name-cell" style={{ fontWeight: "bold", color: "#fff", fontSize: "1.4rem" }} onClick={() => handleViewErrors(api)} title="Click to view failure logs">{api.name}</td>
                 <td style={{ fontFamily: "monospace", opacity: 0.8 }}>{api.url}</td>
                 <td>{new Date(api.created_at).toLocaleDateString()}</td>
                 <td><span style={{ color: api.is_active ? "#b6ff00" : "#666", border: `1px solid ${api.is_active ? "#b6ff00" : "#666"}`, padding: "0.3rem 0.6rem", fontSize: "0.9rem", fontWeight: "bold" }}>{api.is_active ? "ACTIVE" : "INACTIVE"}</span></td>
@@ -357,27 +325,13 @@ export default function DashboardPage() {
 
       {/* -------- MODALS -------- */}
       
-      {/* 1. VIEW ERRORS (NEW) */}
       {activeModal === "VIEW_ERRORS" && (
         <div className="modal-overlay">
           <div className="modal modal-large">
             <h3>DIAGNOSTIC REPORT: <span style={{color: "#fff"}}>{selectedApiName}</span></h3>
-            
             <div className="error-log">
-              {actionLoading ? (
-                <p style={{textAlign: 'center', padding: '1rem', margin: 0}}>FETCHING SYSTEM LOGS...</p>
-              ) : selectedApiErrors.length > 0 ? (
-                selectedApiErrors.map((err, idx) => (
-                  <div key={idx} className="error-entry">{err}</div>
-                ))
-              ) : (
-                <div className="no-errors">
-                  [SYSTEM SECURE]<br/>
-                  NO VULNERABILITIES DETECTED
-                </div>
-              )}
+              {actionLoading ? ( <p style={{textAlign: 'center', padding: '1rem', margin: 0}}>FETCHING SYSTEM LOGS...</p> ) : selectedApiErrors.length > 0 ? ( selectedApiErrors.map((err, idx) => (<div key={idx} className="error-entry">{err}</div>)) ) : ( <div className="no-errors">[SYSTEM SECURE]<br/>NO VULNERABILITIES DETECTED</div> )}
             </div>
-
             <div style={{ marginTop: "2rem", display: "flex", justifyContent: "flex-end" }}>
               <button className="btn btn-primary" onClick={closeModal}>CLOSE LOGS</button>
             </div>
@@ -385,21 +339,21 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* 2. MANAGE USERS */}
       {activeModal === "MANAGE_USERS" && (
         <div className="modal-overlay">
           <div className="modal modal-large">
             <h3>ORG PERSONNEL DATABASE</h3>
-            {actionLoading && !orgUsers.length ? (
-              <p style={{color: "#b6ff00"}}>FETCHING RECORDS...</p>
-            ) : (
+            {actionLoading && !orgUsers.length ? ( <p style={{color: "#b6ff00"}}>FETCHING RECORDS...</p> ) : (
               <table className="user-list">
                 <tbody>
                   {orgUsers.map(orgUser => (
                     <tr key={orgUser.id}>
                       <td>{orgUser.email}<span className="role-badge">{orgUser.role}</span>{orgUser.id === user?.id && <span style={{marginLeft: "0.5rem", color: "#666"}}>(YOU)</span>}</td>
                       <td style={{ textAlign: "right" }}>
-                        {orgUser.id !== user?.id && (<button className="btn-sm-danger" onClick={() => initiateRemoveUser(orgUser)}>[REMOVE]</button>)}
+                        {/* THE CHECK: Only Admin sees REMOVE, and not for themselves */}
+                        {user?.role === "admin" && orgUser.id !== user?.id && (
+                          <button className="btn-sm-danger" onClick={() => initiateRemoveUser(orgUser)}>[REMOVE]</button>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -414,7 +368,6 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* 3. REMOVE USER CONFIRM */}
       {activeModal === "REMOVE_USER_CONFIRM" && userToRemove && (
         <div className="modal-overlay">
           <div className="modal modal-danger">
@@ -428,13 +381,13 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* 4. CREATE API */}
       {activeModal === "CREATE_API" && (
         <div className="modal-overlay">
           <div className="modal">
             <h3>Initiate New Endpoint</h3>
             <input placeholder="API Identifier (Name)" value={apiName} onChange={(e) => setApiName(e.target.value)} autoFocus />
             <input placeholder="Endpoint URL (https://...)" value={apiUrl} onChange={(e) => setApiUrl(e.target.value)} />
+            {createApiError && <p className="validation-text">{createApiError}</p>}
             <div style={{ marginTop: "1rem", display: "flex", justifyContent: "flex-end" }}>
               <button className="btn btn-cancel" onClick={closeModal}>CANCEL</button>
               <button className="btn btn-primary" onClick={confirmCreateApi} disabled={actionLoading}>{actionLoading ? "PROCESSING..." : "INITIALIZE"}</button>
@@ -443,7 +396,6 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* 5. DELETE ORG */}
       {activeModal === "DELETE_ORG" && (
         <div className="modal-overlay">
           <div className="modal modal-danger">
@@ -457,7 +409,6 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* 6. LEAVE ORG */}
       {activeModal === "LEAVE_ORG" && (
         <div className="modal-overlay">
           <div className="modal" style={{ borderColor: "#ffeb3b", boxShadow: "0 0 20px rgba(255, 235, 59, 0.2)" }}>
@@ -471,7 +422,6 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* 7. DELETE API */}
       {activeModal === "DELETE_API" && (
         <div className="modal-overlay">
           <div className="modal" style={{ borderColor: "#ff4d4d" }}>
@@ -485,7 +435,6 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* 8. HELP MODAL */}
       {activeModal === "HELP" && (
         <div className="modal-overlay">
           <div className="modal modal-large">

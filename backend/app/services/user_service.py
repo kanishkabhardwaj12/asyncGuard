@@ -27,12 +27,6 @@ class UserService:
     @staticmethod
     @staticmethod
     async def list_users(current_user: User, db: AsyncSession):
-        if current_user.role != UserRole.admin:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, 
-                detail="Only admins can list users"
-            )
-            
         result = await db.execute(
             select(User).where(User.org_id == current_user.org_id)
         )
