@@ -13,3 +13,8 @@ router = APIRouter(prefix="/user", tags=["users"])
 @limiter.limit("5/minute", key_func=lambda request: str(request.state.user.id))
 async def upgrade_user_role(request: Request, user_id : int, data: UserRoleUpdateModel, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     return await UserService.upgrade_user_role(user_id, data, current_user, db)
+
+@router.patch("list",status_code=status.HTTP_200_OK)
+@limiter.limit("5/minute", key_func=lambda request: str(request.state.user.id))
+async def list_users(request: Request, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return await UserService.list_users(current_user, db)
