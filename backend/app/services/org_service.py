@@ -103,3 +103,15 @@ class OrgService:
             user_email=user_to_remove.email,
             admin_email=admin_user.email
         )
+    @staticmethod
+    async def get_org_info(user : User, db:AsyncSession):
+        if user.org_id is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail="User does not belong to any organization")
+        result = await db.execute(select(Organization).where(Organization.id==user.org_id))
+        org = result.scalar_one_or_none()
+        if not org:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail="Organization not found")
+        return OrgResponseModel(
+            id=org.id,
+            name=org.name
+        )

@@ -34,3 +34,8 @@ async def leave_org(request: Request, db:AsyncSession=Depends(get_db), user : Us
 @limiter.limit("5/minute", key_func=lambda request: str(request.state.user.id))
 async def remove_user_from_org(request: Request, data:RemoveUserFromOrgRequestModel, db:AsyncSession=Depends(get_db), user : User =Depends(get_current_user)):
     return await OrgService.remove_user_from_org(data,user,db)
+
+@router.get("/info", response_model=OrgResponseModel, status_code=status.HTTP_200_OK)
+@limiter.limit("5/minute", key_func=lambda request: str(request.state.user.id))
+async def get_org_info(request: Request, db:AsyncSession=Depends(get_db), user  : User =Depends(get_current_user)):
+    return await OrgService.get_org_info(user,db)
