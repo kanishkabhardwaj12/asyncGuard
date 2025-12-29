@@ -1,0 +1,4 @@
+next
+react
+react-dom
+typescript
