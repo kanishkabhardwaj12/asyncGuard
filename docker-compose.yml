@@ -1,0 +1,46 @@
+services:
+  redis:
+    image: redis:7
+    container_name: asyncguard-redis
+    ports:
+      - "6379:6379"
+
+  backend:
+    build: ./backend
+    container_name: asyncguard-backend
+    env_file:
+      - ./backend/.env
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+
+  worker:
+    build: ./backend
+    container_name: asyncguard-worker
+    command: celery -A app.config.celery worker -l info
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - redis
+
+  beat:
+    build: ./backend
+    container_name: asyncguard-beat
+    command: celery -A app.config.celery beat -l info
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - redis
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+    container_name: asyncguard-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
